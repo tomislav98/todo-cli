@@ -28,3 +28,5 @@ A simple command-line todo list manager built with Rust.
          todo add "Walk the dog"
          todo done "Walk the dog"
          todo delete
+         You can add multiple todo at once:
+         todo add "task1" "task2"
