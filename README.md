@@ -10,7 +10,7 @@ A simple command-line todo list manager built with Rust.
          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    * **Clone the repository**:
       ```sh
-         git clone https://github.com/yourusername/todo_cli.git
+         git clone https://github.com/tomislav98/todo-cli.git
          cd todo_cli
    *  **Build the project**:
       ```sh
