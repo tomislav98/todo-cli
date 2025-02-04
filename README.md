@@ -26,9 +26,8 @@ A simple command-line todo list manager built with Rust.
          sudo mv target/release/todo /usr/local/bin/todo
          Now you can just run:
          todo add "Walk the dog"
-         todo done "Walk the dog"
+         todo
+         todo done 1
          todo delete
          You can add multiple todo at once:
          todo add "task1" "task2"
-         To see the tasks just run:
-         todo
