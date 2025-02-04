@@ -17,10 +17,10 @@ A simple command-line todo list manager built with Rust.
          cargo build --release
    * **Run the CLI**:
       ```sh
-         ./target/release/todo_cli add "Buy groceries"
-         ./target/release/todo_cli add "Finish Rust project"
-         ./target/release/todo_cli done "Buy groceries"
-         ./target/release/todo_cli delete
+         ./target/release/todo add "Buy groceries"
+         ./target/release/todo add "Finish Rust project"
+         ./target/release/todo done "Buy groceries"
+         ./target/release/todo delete
    * **Allow Execution from Anywhere**
       ```sh
          sudo mv target/release/todo /usr/local/bin/todo
