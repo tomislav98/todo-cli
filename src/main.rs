@@ -95,7 +95,9 @@ fn mark_as_done(items: Vec<String>) {
     let mut new_file = file_content.clone();
     for item in items.iter() {
         let new_content = format!("DONE: {}", item);
-        new_file = new_file.replace(item, &new_content);
+        if let Some(pos) = new_file.find(item) {
+            new_file.replace_range(pos..pos + item.len(), &new_content);
+        }
     }
     create_file_when_marked(&new_file);
 }
