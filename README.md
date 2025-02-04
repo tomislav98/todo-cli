@@ -23,7 +23,7 @@ A simple command-line todo list manager built with Rust.
          ./target/release/todo_cli delete
    * **Allow Execution from Anywhere**
       ```sh
-         sudo mv target/release/todo_cli /usr/local/bin/todo
+         sudo mv target/release/todo /usr/local/bin/todo
          Now you can just run:
          todo add "Walk the dog"
          todo done "Walk the dog"
