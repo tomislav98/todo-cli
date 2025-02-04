@@ -11,7 +11,7 @@ A simple command-line todo list manager built with Rust.
    * **Clone the repository**:
       ```sh
          git clone https://github.com/yourusername/todo_cli.git
-         cd todo_cli ```
+         cd todo_cli
    *  **Build the project**:
       ```sh
          cargo build --release
