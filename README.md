@@ -31,3 +31,13 @@ A simple command-line todo list manager built with Rust.
          todo delete
          You can add multiple todo at once:
          todo add "task1" "task2"
+# ✅ TODO List
+
+## 📌 Pending Tasks
+- [ ] Task 1: Description here
+- [ ] Task 2: Description here
+- [ ] Task 3: Description here
+
+## 🎯 Completed Tasks
+- [x] Add notification: Every time user inser the todo, youser would be notified.
+- [x] Task B: Description here
