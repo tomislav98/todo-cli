@@ -1,123 +1,159 @@
+use chrono::{Local, NaiveDate};
+use clap::{Arg, ArgMatches, Command};
 use console::style;
 use dirs;
-use dotenv::dotenv;
-use std::env;
-use std::fs::{read_to_string, File, OpenOptions};
-use std::io::Write;
-use std::path::PathBuf;
+use notification::send_notification;
+use rusqlite::{params, Connection, Result};
 
-fn get_path_file() -> PathBuf {
+mod notification;
+
+const DB_FILE: &str = ".todo_list.db";
+
+fn get_db_path() -> String {
     let mut path = dirs::home_dir().expect("Could not find home directory");
-    path.push(".todo_list.txt");
-    if !path.exists() {
-        File::create(&path).expect("Failed to create todo_list.txt");
-    }
-    path
+    path.push(DB_FILE);
+    path.to_string_lossy().to_string()
 }
 
-fn get_num_lines() -> usize {
-    let file_content = match read_to_string(get_path_file()) {
-        Ok(content) => content,
-        Err(error) => {
-            eprintln!("Error reading file: {}", error);
-            return 0;
-        }
-    };
-    file_content.lines().count()
+fn init_db() -> Result<Connection> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task TEXT NOT NULL,
+            done BOOLEAN NOT NULL DEFAULT 0,
+            date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+    Ok(conn)
 }
 
-fn insert_todo(items: Vec<String>) {
-    let path = get_path_file();
+fn insert_todo(task: &str, end_date: &str) {
+    let conn = init_db().expect("Failed to initialize database");
 
-    let mut data_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&path)
-        .expect("Cannot open file");
+    conn.execute(
+        "INSERT INTO todos (task, done, date) VALUES (?1, 0, ?2)",
+        params![task, end_date],
+    )
+    .expect("Failed to insert todo");
 
-    let num_lines = get_num_lines();
-
-    for (index, item) in items.iter().enumerate() {
-        let item_with_new_line = format!("{} {}\n", num_lines + index + 1, item);
-        data_file
-            .write_all(item_with_new_line.as_bytes())
-            .expect("Write failed");
-    }
+    send_notification("add");
 }
 
-fn delete_content() {
-    let path = get_path_file();
-    File::create(path).expect("Content of file cannot be deleted");
+fn is_task_expired(date: &str) -> bool {
+    let today = Local::now().date_naive(); // Get only the date part
+
+    // Parse the input date string as NaiveDate
+    let naive_date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .expect("Invalid date format. Expected YYYY-MM-DD");
+
+    today > naive_date
 }
 
 fn display_on_console() {
-    let path = get_path_file();
+    let conn = init_db().expect("Failed to initialize database");
 
-    if let Ok(content) = read_to_string(path) {
-        for line in content.lines() {
-            if line.contains("DONE") {
-                println!("{}", style(line).red().strikethrough());
-            } else {
-                println!("{}", style(line).green());
-            }
+    let mut stmt = conn
+        .prepare("SELECT id, task, done, date FROM todos")
+        .expect("Failed to fetch tasks");
+    let tasks = stmt
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let task: String = row.get(1)?;
+            let done: bool = row.get(2)?;
+            let date: Option<String> = row.get(3)?;
+            Ok((id, task, done, date))
+        })
+        .expect("Failed to parse tasks");
+
+    for task in tasks {
+        let (id, task, done, date) = task.expect("Error reading task");
+        if done {
+            println!(
+                "{}",
+                style(format!("{}: {}", id, task)).red().strikethrough()
+            );
+        } else if is_task_expired(&date.expect("Problem with date")) {
+            println!("{}", style(format!("⚠️ Task is overdue!")).yellow());
+        } else {
+            println!("{}", style(format!("{}: {}", id, task)).green());
         }
-    } else {
-        eprintln!("Todo list file does not exist.");
     }
 }
 
-fn create_file_when_marked(new_content: &str) {
-    delete_content();
-    let path = get_path_file();
+fn mark_as_done(task_id: &str) {
+    let conn = init_db().expect("Failed to initialize database");
 
-    let mut data_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&path)
-        .expect("Cannot open file");
+    conn.execute("UPDATE todos SET done = 1 WHERE id = ?1", params![task_id])
+        .expect("Failed to update todo");
 
-    data_file
-        .write_all(new_content.as_bytes())
-        .expect("Write failed");
+    send_notification("done");
 }
 
-fn mark_as_done(items: Vec<String>) {
-    let path = get_path_file();
+fn delete_content() {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path).expect("Problem with connection in delete_content.");
 
-    let file_content = match read_to_string(&path) {
-        Ok(content) => content,
-        Err(error) => {
-            eprintln!("Error reading file: {}", error);
-            return;
-        }
-    };
+    conn.execute("DROP TABLE IF EXISTS todos", [])
+        .expect("Problem with dropping the table.");
 
-    let mut new_file = file_content.clone();
-    for item in items.iter() {
-        let new_content = format!("DONE: {}", item);
-        if let Some(pos) = new_file.find(item) {
-            new_file.replace_range(pos..pos + item.len(), &new_content);
+    println!("{}", style("All tasks deleted!").red());
+    send_notification("delete");
+}
+
+fn execute_command(matches: &ArgMatches) {
+    match matches.subcommand() {
+        Some(("add", sub_matches)) => {
+            let task = sub_matches
+                .get_one::<String>("task")
+                .expect("Task is required");
+            let due_date = sub_matches
+                .get_one::<String>("due")
+                .expect(&"No due date".to_string());
+            insert_todo(&task, &due_date);
         }
+        Some(("delete", _)) => {
+            delete_content();
+        }
+        Some(("done", sub_matches)) => {
+            let task_id = sub_matches
+                .get_one::<String>("task")
+                .expect("Task that should be marked as done is required.");
+
+            mark_as_done(&task_id);
+        }
+        None => {
+            display_on_console();
+        }
+        _ => println!("No matches"),
     }
-    create_file_when_marked(&new_file);
 }
 
 fn init() {
-    let args: Vec<String> = env::args().collect();
+    let matches = Command::new("todo")
+        .subcommand(
+            Command::new("add")
+                .about("Add a new todo task.")
+                .arg(Arg::new("task").required(true).help("The task description"))
+                .arg(
+                    Arg::new("due")
+                        .long("due")
+                        .help("The due date for the task"),
+                ),
+        )
+        .subcommand(
+            Command::new("done")
+                .about("Mark task as done.")
+                .arg(Arg::new("task").required(true).help("The task description")),
+        )
+        .subcommand(Command::new("delete").about("Delete all tasks"))
+        .get_matches();
 
-    if args.len() == 1 {
-        display_on_console();
-    } else {
-        match args[1].to_lowercase().as_str() {
-            "add" => insert_todo(args[2..].to_vec()),
-            "delete" => delete_content(),
-            "done" => mark_as_done(args[2..].to_vec()),
-            _ => eprintln!("Invalid command. Use 'add', 'delete', or 'done'."),
-        }
-    }
+    execute_command(&matches);
 }
 
 fn main() {
-    dotenv().ok();
     init();
 }
