@@ -2,9 +2,10 @@ use chrono::{Local, NaiveDate};
 use clap::{Arg, ArgMatches, Command};
 use console::style;
 use dirs;
+use dotenv::dotenv;
 use notification::send_notification;
 use rusqlite::{params, Connection, Result};
-
+use std::process;
 mod notification;
 
 const DB_FILE: &str = ".todo_list.db";
@@ -103,6 +104,49 @@ fn delete_content() {
     send_notification("delete");
 }
 
+fn sync_in_cloud() {
+    let db_path = get_db_path();
+    let cloud_path = std::env::var("CLOUD_PATH").expect("CLOUD_PATH must be set.");
+    let output_command = process::Command::new("rclone")
+        .arg("copy")
+        .arg(db_path)
+        .arg(cloud_path)
+        .arg("--update")
+        .output()
+        .expect("Failet to execute rclone command");
+
+    if output_command.status.success() {
+        println!("✅ Sync successful!");
+    } else {
+        eprintln!(
+            "❌ Sync failed: {}",
+            String::from_utf8_lossy(&output_command.stderr)
+        );
+    }
+}
+
+fn sync_in_local() {
+    let path = dirs::home_dir().expect("Could not find home directory");
+    let local_path = std::env::var("LOCAL_PATH").expect("LOCAL_PATH must be set.");
+
+    let output_command = process::Command::new("rclone")
+        .arg("copy")
+        .arg(local_path)
+        .arg(path)
+        .arg("--update")
+        .output()
+        .expect("Failet to execute rclone command");
+
+    if output_command.status.success() {
+        println!("✅ Sync successful!");
+    } else {
+        eprintln!(
+            "❌ Sync failed: {}",
+            String::from_utf8_lossy(&output_command.stderr)
+        );
+    }
+}
+
 fn execute_command(matches: &ArgMatches) {
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
@@ -124,7 +168,13 @@ fn execute_command(matches: &ArgMatches) {
 
             mark_as_done(&task_id);
         }
-        None => {
+        Some(("sync-local", _)) => {
+            sync_in_local();
+        }
+        Some(("sync-cloud", _)) => {
+            sync_in_cloud();
+        }
+        Some(("list", _)) => {
             display_on_console();
         }
         _ => println!("No matches"),
@@ -136,24 +186,39 @@ fn init() {
         .subcommand(
             Command::new("add")
                 .about("Add a new todo task.")
-                .arg(Arg::new("task").required(true).help("The task description"))
+                .arg(
+                    Arg::new("task")
+                        .required(true)
+                        .help("The task description."),
+                )
                 .arg(
                     Arg::new("due")
                         .long("due")
-                        .help("The due date for the task"),
+                        .short('d')
+                        .help("The due date for the task."),
                 ),
         )
         .subcommand(
-            Command::new("done")
-                .about("Mark task as done.")
-                .arg(Arg::new("task").required(true).help("The task description")),
+            Command::new("done").about("Mark task as done.").arg(
+                Arg::new("task")
+                    .required(true)
+                    .help("The task description."),
+            ),
         )
-        .subcommand(Command::new("delete").about("Delete all tasks"))
+        .subcommand(Command::new("delete").about("Delete all tasks.").alias("r"))
+        .subcommand(Command::new("sync-local").about("Sync Cloud data in local."))
+        .subcommand(Command::new("sync-cloud").about("Sync local data in cloud."))
+        .subcommand(
+            Command::new("list")
+                .about("List the current tasks.")
+                .alias("-l"),
+        )
         .get_matches();
 
     execute_command(&matches);
 }
 
 fn main() {
+    dotenv().ok();
     init();
 }
